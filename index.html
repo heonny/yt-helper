@@ -7,12 +7,12 @@
 <style>
   :root {
     --bg: #fafafa; --panel: #fff; --text: #1a1a1a; --muted: #6b6b6b;
-    --line: #e8e8e8; --hover: #f2f2f2; --sel: #fde8e8; --accent: #d61f26; --drop: #fff4d6;
+    --line: #e8e8e8; --hover: #f2f2f2; --sel: #fde8e8; --accent: #d61f26; --drop: #fff4d6; --ok: #1e8e3e;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #121212; --panel: #1c1c1c; --text: #eee; --muted: #9a9a9a;
-      --line: #2a2a2a; --hover: #242424; --sel: #3a1c1d; --accent: #ff4e45; --drop: #3a3218;
+      --line: #2a2a2a; --hover: #242424; --sel: #3a1c1d; --accent: #ff4e45; --drop: #3a3218; --ok: #4cc26a;
     }
   }
   * { box-sizing: border-box; }
@@ -28,6 +28,12 @@
   .top { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
   .top strong { font-size: 14px; }
   #status { color: var(--muted); flex: 1; min-width: 200px; }
+  #refresh { margin-left: auto; }
+  .auth-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; }
+  .auth-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .auth-pill.ok .dot { background: var(--ok); }
+  .auth-pill.none, .auth-pill.expired, .auth-pill.unknown { color: var(--accent); border-color: var(--accent); }
+  .auth-pill.none .dot, .auth-pill.expired .dot, .auth-pill.unknown .dot { background: var(--accent); }
   #queue { display: flex; gap: 8px; align-items: center; color: var(--muted); }
   #queue[hidden] { display: none; }
   #qbar { width: 160px; accent-color: var(--accent); }
@@ -73,12 +79,12 @@
 <body>
 <header class="top">
   <strong>재생목록 도우미</strong>
-  <button id="authOpen">인증</button>
-  <button id="refresh" title="보던 재생목록, 검색어, 스크롤 위치를 유지한 채 최신 내용으로 갱신">갱신</button>
+  <button id="authOpen" class="auth-pill checking"><span class="dot"></span><span>인증 확인 중…</span></button>
   <button id="layout">위아래로 보기</button>
   <label><input id="move" type="checkbox"> 이동 모드 (원본에서 빼기)</label>
   <div id="queue" hidden><progress id="qbar" max="1" value="0"></progress><span id="qtext"></span></div>
   <span id="status">곡을 골라 반대쪽 목록으로 드래그하세요. Shift+클릭으로 범위 선택, delete 키로 선택 곡 삭제. 이미 있는 곡은 자동으로 건너뜁니다.</span>
+  <button id="refresh" title="보던 재생목록, 검색어, 정렬, 스크롤 위치를 유지한 채 곡 목록과 재생목록 목록을 다시 받습니다">재생목록 갱신</button>
 </header>
 <main id="panes">
   <section class="pane"></section>
@@ -149,15 +155,28 @@ let currentLabel = "";
 const hidden = new Set();
 const hideKey = (playlistId, t) => `${playlistId}|${t.setVideoId}`;
 
+// 서버가 시작할 때 URL 조각(#token=...)으로 넘긴 접속 토큰. 조각은 HTTP 요청에 실리지 않는다.
+// 새로 고침과 다른 탭에서도 쓰도록 저장하고, 주소창과 방문 기록에서는 바로 지운다.
+const tokenFromUrl = new URLSearchParams(location.hash.slice(1)).get("token");
+let token = tokenFromUrl || "";
+try {
+  if (tokenFromUrl) localStorage.setItem("token", tokenFromUrl);
+  else token = localStorage.getItem("token") || "";
+} catch {}
+if (location.hash) history.replaceState(null, "", location.pathname);
+
 async function api(path, body) {
-  const res = await fetch(path, body ? {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-  } : undefined);
+  const headers = { "X-Token": token };
+  if (body) headers["Content-Type"] = "application/json";
+  const res = await fetch(path, body ? { method: "POST", headers, body: JSON.stringify(body) } : { headers });
   const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
   if (res.ok) return data;
   const error = new Error(data.error);
   error.auth = res.status === 401 && data.auth;
-  if (error.auth) openAuth(data.error);
+  if (error.auth) {
+    renderAuth({ kind: "expired" });
+    openAuth(data.error);
+  }
   throw error;
 }
 
@@ -165,17 +184,34 @@ async function api(path, body) {
 let authWaiters = [];
 const waitForAuth = () => new Promise((resolve) => authWaiters.push(resolve));
 
-let authAccount = null;
+const AUTH_LABELS = {
+  checking: () => "인증 확인 중…",
+  ok: (account) => `${account || "YouTube Music"} 연결됨`,
+  none: () => "연결 안 됨",
+  expired: () => "인증 만료",
+  unknown: () => "인증 확인 실패",
+};
+let authState = { kind: "checking", account: "" };
 
-function showAuthState() {
-  $("authAccount").hidden = authAccount === null;
-  $("authAccount").textContent = `현재 ${authAccount || "YouTube Music"} 계정으로 연결되어 있습니다.`;
-  $("authLogout").hidden = authAccount === null;
+// 위쪽 상태 버튼과 연결 창의 계정 안내, 인증 해제 버튼을 같은 상태로 맞춘다.
+function renderAuth(state) {
+  if (state) authState = state;
+  const { kind, account } = authState;
+  const pill = $("authOpen");
+  pill.className = `auth-pill ${kind}`;
+  pill.lastChild.textContent = AUTH_LABELS[kind](account);
+  pill.title = kind === "ok" ? "연결 정보 보기, 인증 해제" : "눌러서 YouTube Music에 연결";
+  const saved = kind === "ok" || kind === "expired";
+  $("authAccount").hidden = !saved;
+  $("authAccount").textContent = kind === "ok"
+    ? `현재 ${account || "YouTube Music"} 계정으로 연결되어 있습니다.`
+    : "저장된 인증이 만료됐습니다. 새로 붙여넣으세요.";
+  $("authLogout").hidden = !saved;
 }
 
 function openAuth(message) {
   $("authError").textContent = message || "";
-  showAuthState();
+  renderAuth();
   if ($("auth").open) return;
   $("authText").value = "";
   $("auth").showModal();
@@ -197,11 +233,10 @@ $("authLogout").onclick = async () => {
     $("authError").textContent = e.message;
     return;
   }
-  authAccount = null;
+  renderAuth({ kind: "none" });
   playlists = [];
   fillSelects();
   await Promise.all(panes.map((p) => load(p, "")));
-  showAuthState();
   $("authError").textContent = "인증을 해제했습니다. 다시 쓰려면 새로 붙여넣으세요.";
   setStatus("인증 해제됨");
 };
@@ -221,7 +256,7 @@ $("authForm").onsubmit = async (e) => {
   } finally {
     $("authSubmit").disabled = false;
   }
-  authAccount = account || "";
+  renderAuth({ kind: "ok", account });
   closeAuth();
   setStatus(`${account || "YouTube Music"} 계정으로 연결됨`);
   authWaiters.splice(0).forEach((resolve) => resolve());
@@ -595,11 +630,14 @@ try { setLayout(localStorage.getItem("layout") === "col"); } catch {}
 
 api("/api/auth")
   .then((auth) => {
+    renderAuth(auth.ok ? { kind: "ok", account: auth.account } : { kind: "none" });
     if (!auth.ok) return openAuth();
-    authAccount = auth.account;
     return refreshPlaylists().then(restoreView);
   })
-  .catch((e) => setStatus("오류: " + e.message));
+  .catch((e) => {
+    if (authState.kind === "checking") renderAuth({ kind: "unknown" });
+    setStatus("오류: " + e.message);
+  });
 </script>
 </body>
 </html>

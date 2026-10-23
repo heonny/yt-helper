@@ -5,9 +5,13 @@
 실행: python3 app.py  (브라우저가 열리고, 처음이면 인증 화면에서 Copy as cURL 내용을 붙여넣는다)
 """
 import codecs
+import hmac
+import html
 import json
 import os
 import re
+import secrets
+import stat
 import time
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
@@ -21,9 +25,12 @@ from ytmusicapi import YTMusic
 HERE = Path(__file__).parent
 PORT = 8765
 ALLOWED_HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
+# 실행할 때마다 새로 만든다. 브라우저에는 URL 조각(#)으로만 넘겨, 같은 컴퓨터의 다른 계정이나 프로그램이 API를 부르지 못하게 한다.
+TOKEN = secrets.token_urlsafe(32)
 # 프로젝트 폴더 밖에 두어 git이나 폴더 공유로 쿠키가 새지 않게 한다.
 AUTH_PATH = Path.home() / ".config" / "yt-helper" / "browser.json"
 LEGACY_AUTH_PATH = HERE / "browser.json"
+OPEN_PATH = AUTH_PATH.with_name("open.html")
 MAX_BODY = 5_000_000
 # -H/-b 인자의 값. bash 형식은 '...'이나 $'...', Windows cmd 형식은 ^ 이스케이프를 푼 뒤 "..."로 남는다.
 CURL_ARG = re.compile(r"""(-H|--header|-b|--cookie)\s+(?:\$'((?:[^'\\]|\\.)*)'|'([^']*)'|"((?:[^"\\]|\\.)*)")""")
@@ -99,7 +106,7 @@ def save_auth(body):
     try:
         write_private(AUTH_PATH, json.dumps(headers))
     except OSError as e:
-        raise RuntimeError("인증 파일을 저장하지 못했습니다. 디스크 공간과 ~/.config 폴더 권한을 확인하세요.") from e
+        raise RuntimeError(f"인증 파일을 저장하지 못했습니다. 디스크 공간과 폴더 소유자, 권한을 확인하세요. {e}") from e
     # 저장까지 성공한 뒤에만 바꿔서, 다음 실행 때 읽을 파일과 지금 쓰는 계정이 어긋나지 않게 한다.
     use(client, name)
     return auth_status()
@@ -126,12 +133,28 @@ def migrate_legacy_auth():
         print(f"프로젝트 폴더의 {LEGACY_AUTH_PATH.name}을 옮기지 못했습니다. 직접 지워 주세요. ({e})")
 
 
+def check_private(path, mode):
+    """내 소유가 아니면 거부하고, 권한이 mode보다 열려 있으면 경고한 뒤 고친다."""
+    # Windows에는 POSIX 소유자와 권한 비트가 없어 사용자 폴더의 기본 접근 권한에 맡긴다.
+    if os.name == "nt":
+        return
+    info = path.stat()
+    if info.st_uid != os.getuid():
+        raise PermissionError(f"{path}의 소유자가 현재 사용자가 아닙니다. 이 파일은 쓰지 않습니다.")
+    current = stat.S_IMODE(info.st_mode)
+    if current & ~mode:
+        os.chmod(path, mode)
+        print(f"경고: {path} 권한이 {oct(current)}여서 {oct(mode)}로 고쳤습니다. "
+              "다른 계정이 쿠키를 읽었을 수 있으니, 걱정되면 YouTube에서 로그아웃한 뒤 다시 연결하세요.")
+
+
 def load_saved_auth():
     migrate_legacy_auth()
     if not AUTH_PATH.exists():
         return
     try:
-        os.chmod(AUTH_PATH, 0o600)
+        check_private(AUTH_PATH.parent, 0o700)
+        check_private(AUTH_PATH, 0o600)
         use(*login(json.loads(AUTH_PATH.read_text())))
     except Exception as e:
         print(f"저장된 인증으로 로그인하지 못했습니다. 브라우저의 인증 화면에서 다시 붙여넣으세요. ({e})")
@@ -236,6 +259,8 @@ class Handler(BaseHTTPRequestHandler):
         # Host 검사는 DNS rebinding을, JSON Content-Type 강제는 다른 사이트의 POST(CSRF)를 막는다.
         if self.headers.get("Host") not in ALLOWED_HOSTS:
             return self.send_json(403, {"error": "forbidden host"})
+        if not hmac.compare_digest(self.headers.get("X-Token", "").encode(), TOKEN.encode()):
+            return self.send_json(403, {"error": "접속 토큰이 맞지 않습니다. 서버를 시작할 때 터미널에 나온 주소로 다시 여세요.", "token": True})
         if needs_auth and yt is None:
             return self.send_json(401, {"error": "YouTube Music 인증이 필요합니다.", "auth": True})
         try:
@@ -287,16 +312,29 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+def open_browser(url):
+    """토큰이 든 주소를 600 권한 파일에 넣고 그 파일을 연다."""
+    # Linux의 xdg-open처럼 주소를 명령줄 인자로 받는 경우 다른 계정이 ps로 토큰을 볼 수 있다.
+    try:
+        write_private(OPEN_PATH, f'<!doctype html><meta http-equiv="refresh" content="0;url={html.escape(url)}">')
+    except OSError as e:
+        print(f"브라우저를 자동으로 열지 못했습니다. 위 주소를 직접 여세요. ({e})")
+        return
+    webbrowser.open(OPEN_PATH.as_uri())
+
+
 def main():
     load_saved_auth()
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    url = f"http://127.0.0.1:{PORT}"
-    print(f"{url} 에서 실행 중 (종료: Ctrl+C)")
-    webbrowser.open(url)
+    url = f"http://127.0.0.1:{PORT}/#token={TOKEN}"
+    print(f"실행 중입니다. 브라우저가 열리지 않으면 이 주소를 여세요. 종료는 Ctrl+C.\n{url}")
+    open_browser(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        OPEN_PATH.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
