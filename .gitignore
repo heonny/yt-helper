@@ -1,0 +1,7 @@
+# 로그인 쿠키가 들어 있다. 올라가면 누구나 이 계정으로 YouTube를 쓸 수 있다.
+browser.json
+oauth.json
+
+__pycache__/
+*.pyc
+.DS_Store
