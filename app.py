@@ -21,6 +21,11 @@ from urllib.parse import parse_qs, urlparse
 
 import ytmusicapi
 from ytmusicapi import YTMusic
+# 아래 셋은 공개 API가 아니다. get_playlist가 다음 페이지 토큰을 돌려주지 않아 직접 쪽 단위로 받으려고 쓴다.
+# requirements.txt가 ytmusicapi를 2 미만으로 묶어 두었으니, 올릴 때는 list_tracks와 more_tracks를 다시 확인한다.
+from ytmusicapi.continuations import CONTINUATION_ITEMS, get_continuation_token
+from ytmusicapi.navigation import CONTENT, SECTION, TWO_COLUMN_RENDERER, nav
+from ytmusicapi.parsers.playlists import parse_playlist_items
 
 HERE = Path(__file__).parent
 PORT = 8765
@@ -32,6 +37,7 @@ AUTH_PATH = Path.home() / ".config" / "yt-helper" / "browser.json"
 LEGACY_AUTH_PATH = HERE / "browser.json"
 OPEN_PATH = AUTH_PATH.with_name("open.html")
 MAX_BODY = 5_000_000
+PLAYLIST_SHELF = [*TWO_COLUMN_RENDERER, "secondaryContents", *SECTION, *CONTENT, "musicPlaylistShelfRenderer", "contents"]
 # -H/-b 인자의 값. bash 형식은 '...'이나 $'...', Windows cmd 형식은 ^ 이스케이프를 푼 뒤 "..."로 남는다.
 CURL_ARG = re.compile(r"""(-H|--header|-b|--cookie)\s+(?:\$'((?:[^'\\]|\\.)*)'|'([^']*)'|"((?:[^"\\]|\\.)*)")""")
 
@@ -165,7 +171,8 @@ def list_playlists():
     # 보관함 목록에는 소유 여부가 없어 PL 재생목록마다 상세를 받아 owned를 확인한다. LM·리캡 같은 자동 목록은 건너뛴다.
     user_ids = [p["playlistId"] for p in library if p["playlistId"].startswith("PL")]
     with ThreadPoolExecutor(max_workers=8) as pool:
-        details = dict(zip(user_ids, pool.map(lambda pid: fetch_playlist(pid, limit=1), user_ids)))
+        # limit=0이면 첫 페이지만 받는다. limit=1은 첫 페이지 다음 쪽까지 한 번 더 요청한다.
+        details = dict(zip(user_ids, pool.map(lambda pid: fetch_playlist(pid, limit=0), user_ids)))
     result = []
     for p in library:
         detail = details.get(p["playlistId"])
@@ -186,20 +193,37 @@ def fetch_playlist(playlist_id, limit=None, attempts=4):
             time.sleep(1.5)
 
 
+def simplify(track):
+    return {
+        "videoId": track.get("videoId"),
+        "setVideoId": track.get("setVideoId"),
+        "title": track["title"],
+        "artists": ", ".join(a["name"] for a in track.get("artists") or []),
+        "album": (track.get("album") or {}).get("name", ""),
+        "thumb": (track.get("thumbnails") or [{}])[0].get("url", ""),
+    }
+
+
+def track_page(items):
+    """한 쪽(약 100곡)의 곡과, 마지막 항목에 붙은 다음 쪽 토큰을 돌려준다."""
+    items = items or []
+    return {"tracks": [simplify(t) for t in parse_playlist_items(items)], "next": get_continuation_token(items) if items else None}
+
+
 def list_tracks(playlist_id):
-    playlist = fetch_playlist(playlist_id)
+    """첫 쪽과 다음 쪽 토큰, 소유 여부, 전체 곡 수를 돌려준다. 나머지 쪽은 화면이 more_tracks로 이어 받는다."""
+    # owned와 trackCount는 get_playlist의 머리글 해석을 그대로 쓰고, 곡과 토큰은 같은 browse 요청을 직접 보내 얻는다.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        meta = pool.submit(fetch_playlist, playlist_id, 0)
+        first = pool.submit(yt._send_request, "browse", {"browseId": "VL" + playlist_id})
+        playlist, response = meta.result(), first.result()
     # 남의 재생목록을 보관함에 저장한 경우 owned가 False이고, 수정/삭제는 403으로 거부된다.
-    return {"owned": bool(playlist.get("owned")), "tracks": [
-        {
-            "videoId": t.get("videoId"),
-            "setVideoId": t.get("setVideoId"),
-            "title": t["title"],
-            "artists": ", ".join(a["name"] for a in t.get("artists") or []),
-            "album": (t.get("album") or {}).get("name", ""),
-            "thumb": (t.get("thumbnails") or [{}])[0].get("url", ""),
-        }
-        for t in playlist["tracks"]
-    ]}
+    return {"owned": bool(playlist.get("owned")), "total": playlist.get("trackCount"), **track_page(nav(response, PLAYLIST_SHELF, True))}
+
+
+def more_tracks(body):
+    response = yt._send_request("browse", {"continuation": str(body["token"])})
+    return track_page(nav(response, CONTINUATION_ITEMS, True))
 
 
 def ensure_ok(result, what):
@@ -299,7 +323,7 @@ class Handler(BaseHTTPRequestHandler):
         return body
 
     def do_POST(self):
-        actions = {"/api/auth": save_auth, "/api/logout": logout, "/api/create": create, "/api/add": add, "/api/remove": remove, "/api/delete": delete}
+        actions = {"/api/auth": save_auth, "/api/logout": logout, "/api/tracks/more": more_tracks, "/api/create": create, "/api/add": add, "/api/remove": remove, "/api/delete": delete}
         action = actions.get(self.path)
         if not action:
             return self.send_error(404)
