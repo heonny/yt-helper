@@ -77,19 +77,21 @@ function showProgress() {
   setTimeout(() => { if (!draining) $("queue").hidden = true; }, 4000);
 }
 
-const pickedOf = (p) => p.tracks.filter((t) => p.selected.has(t.i)).map(({ videoId, setVideoId }) => ({ videoId, setVideoId }));
+const idsOf = ({ videoId, setVideoId }) => ({ videoId, setVideoId });
+const pickedOf = (p) => p.tracks.filter((t) => p.selected.has(t.i)).map(idsOf);
 
-export function transfer(from, to) {
-  if (!from || from === to || !from.selected.size) return;
+// single이 있으면 선택 대신 그 곡만 보내고, 고르던 선택은 건드리지 않는다.
+export function transfer(from, to, single = null) {
+  if (!from || from === to || !(single || from.selected.size)) return;
   if (!to.id) return setStatus("반대쪽에서 넣을 재생목록을 먼저 고르세요.");
   if (from.id === to.id) return setStatus("같은 재생목록끼리는 보낼 수 없습니다.");
-  const tracks = pickedOf(from);
+  const tracks = single ? [idsOf(single)] : pickedOf(from);
   const move = $("move").checked;
   const [fromId, toId, fromName, toName] = [from.id, to.id, titleOf(from.id), titleOf(to.id)];
   if (!to.owned) return setStatus(`"${toName}"은 내 재생목록이 아니라 곡을 넣을 수 없습니다.`);
   if (move && !from.owned) return setStatus(`"${fromName}"은 내 재생목록이 아니라 곡을 뺄 수 없습니다. 이동 모드를 끄고 복사하세요.`);
   if (move && tracks.length >= BULK_CONFIRM && !confirm(`"${fromName}"에서 ${tracks.length}곡을 빼서 "${toName}"로 옮길까요?`)) return;
-  from.selected.clear();
+  if (!single) from.selected.clear();
   enqueue({
     label: `"${toName}"에 ${tracks.length}곡 ${move ? "이동" : "추가"}`,
     dirty: move ? [toId, fromId] : [toId],

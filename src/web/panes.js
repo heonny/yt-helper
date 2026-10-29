@@ -3,6 +3,8 @@ import { api } from "./api.js";
 
 export let playlists = [];
 export let dragFrom = null;
+// 선택 안 된 곡을 잡았을 때 그 곡을 담는다. 드래그 중에 목록을 다시 불러오면 행 번호가 바뀌므로 번호가 아니라 곡을 들고 있는다.
+export let dragOnly = null;
 export let activePane = null;
 // 삭제 직후에도 서버 목록에 잠시 남아 있을 수 있어 화면에서는 바로 뺀다.
 export const deleted = new Set();
@@ -237,11 +239,11 @@ function toggle(p, pos, range) {
 }
 
 function startDrag(p, track, e) {
-  // 선택 안 된 곡을 잡으면 그 곡만 옮긴다. 드래그 중 노드를 바꾸면 드래그가 끊기므로 render 대신 paint.
-  if (!p.selected.has(track.i)) { p.selected = new Set([track.i]); paint(p); }
+  // 선택 안 된 곡을 잡으면 고르던 선택은 그대로 두고 그 곡만 옮긴다.
   dragFrom = p;
+  dragOnly = p.selected.has(track.i) ? null : track;
   const badge = $("dragBadge");
-  badge.textContent = `${p.selected.size}곡`;
+  badge.textContent = `${dragOnly ? 1 : p.selected.size}곡`;
   e.dataTransfer.setDragImage(badge, 0, 0);
   e.dataTransfer.effectAllowed = "copyMove";
   e.dataTransfer.setData("text/plain", badge.textContent);
@@ -249,5 +251,6 @@ function startDrag(p, track, e) {
 
 function endDrag() {
   dragFrom = null;
+  dragOnly = null;
   for (const p of panes) if (p.stale) { p.stale = false; render(p); }
 }
