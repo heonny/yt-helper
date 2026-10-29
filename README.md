@@ -84,7 +84,7 @@ Windows에서는 탐색기에서 `start.bat`을 더블클릭하세요. cmd 창�
 | `src/server/app.py` | 로컬 HTTP 서버이자 실행 진입점. Host, 토큰 검사 뒤 화면 요청을 아래 두 모듈로 넘깁니다. |
 | `src/server/auth.py` | 붙여넣은 cURL에서 인증 헤더를 뽑아 저장하고, 로그인 상태를 들고 있습니다. |
 | `src/server/playlists.py` | 재생목록과 곡을 읽고 바꿉니다. 추가, 삭제, 셔플이 여기 있습니다. |
-| `src/web/` | 화면. `index.html`, `style.css`, `app.js`를 별도 빌드 없이 서버가 그대로 보냅니다. |
+| `src/web/` | 화면. 별도 빌드 없이 서버가 그대로 보냅니다. `main.js`가 진입점이고 나머지 모듈을 이어 붙입니다. `panes.js`는 재생목록 화면, `queue.js`는 재생목록을 바꾸는 작업 큐, `auth-dialog.js`는 연결 창, `api.js`는 서버 호출, `dom.js`는 DOM 도우미를 맡습니다. |
 
 ## 라이선스
 

@@ -21,7 +21,8 @@ WEB_DIR = Path(__file__).resolve().parents[1] / "web"
 WEB_FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
-    "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+    **{f"/{name}": (name, "text/javascript; charset=utf-8")
+       for name in ("main.js", "dom.js", "api.js", "auth-dialog.js", "panes.js", "queue.js")},
 }
 PORT = 8765
 ALLOWED_HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
