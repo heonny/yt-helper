@@ -30,10 +30,10 @@ python3 -m pip install --user -r requirements.txt
 ## 실행과 인증
 
 ```bash
-python3 app.py
+./start.sh
 ```
 
-브라우저가 `http://127.0.0.1:8765/#token=...` 주소로 열립니다. 이 토큰은 실행할 때마다 새로 만들어지고, 화면이 API를 부를 때 함께 보내야 서버가 요청을 받습니다. 브라우저가 열리지 않거나 탭을 닫았다면 터미널에 출력된 주소를 그대로 여세요. 서버를 다시 시작한 뒤 예전 탭에 "접속 토큰이 맞지 않습니다"가 뜨면, 새로 열린 탭을 쓰거나 터미널의 새 주소를 여세요. 서버를 끄려면 터미널에서 `Ctrl+C`를 누르세요. macOS 기본 Python이 띄우는 `NotOpenSSLWarning`이 거슬리면 `python3 -W ignore app.py`로 실행하세요.
+브라우저가 `http://127.0.0.1:8765/#token=...` 주소로 열립니다. 이 토큰은 실행할 때마다 새로 만들어지고, 화면이 API를 부를 때 함께 보내야 서버가 요청을 받습니다. 브라우저가 열리지 않거나 탭을 닫았다면 터미널에 출력된 주소를 그대로 여세요. 서버를 다시 시작한 뒤 예전 탭에 "접속 토큰이 맞지 않습니다"가 뜨면, 새로 열린 탭을 쓰거나 터미널의 새 주소를 여세요. 서버를 끄려면 터미널에서 `Ctrl+C`를 누르세요. `start.sh`는 `ytmusicapi`가 없으면 먼저 설치하고, macOS 기본 Python이 띄우는 `NotOpenSSLWarning`을 숨깁니다. Windows에서는 `python src\server\app.py`로 실행하세요.
 
 처음 실행하면 "YouTube Music 연결" 창이 뜹니다. yt-helper는 브라우저의 로그인 쿠키로 YouTube Music에 요청을 보내므로, 그 쿠키를 한 번 붙여넣어야 합니다.
 
@@ -62,17 +62,18 @@ python3 app.py
 ## 주의할 점
 
 - **`~/.config/yt-helper/browser.json`을 공유하거나 올리지 마세요.** 이 파일만 있으면 누구나 이 계정으로 YouTube Music을 쓸 수 있습니다. 실수로 올렸다면 파일을 지우는 것으로는 부족하고, YouTube에서 로그아웃해 쿠키를 무효로 만들어야 합니다.
-- yt-helper는 공식 API가 아닌 [ytmusicapi](https://github.com/sigma67/ytmusicapi)를 씁니다. YouTube가 응답 형식을 바꾸면 기능이 깨질 수 있습니다. 실제로 재생목록 삭제 응답 형식이 바뀌어 `app.py`의 `delete`에서 따로 처리하고 있습니다.
+- yt-helper는 공식 API가 아닌 [ytmusicapi](https://github.com/sigma67/ytmusicapi)를 씁니다. YouTube가 응답 형식을 바꾸면 기능이 깨질 수 있습니다. 실제로 재생목록 삭제 응답 형식이 바뀌어 `src/server/app.py`의 `delete`에서 따로 처리하고 있습니다.
 - 서버는 `127.0.0.1`에서만 열리고, 다른 Host 헤더, JSON이 아닌 POST 요청, 접속 토큰이 없는 API 요청을 거부합니다. 그래서 같은 네트워크의 다른 기기, 다른 웹사이트, 토큰을 모르는 같은 컴퓨터의 다른 계정이나 프로그램은 이 서버를 쓸 수 없습니다.
 - 시작할 때 인증 파일과 폴더의 소유자와 권한을 점검합니다. 내 소유가 아니면 쓰지 않고, 권한이 600과 700보다 열려 있으면 경고를 출력하고 고칩니다.
-- 곡 정보는 한국어로 받습니다. 바꾸려면 `app.py`의 `main`에서 `language`와 `location` 값을 고치세요.
+- 곡 정보는 한국어로 받습니다. 바꾸려면 `src/server/app.py`의 `main`에서 `language`와 `location` 값을 고치세요.
 
 ## 파일 구성
 
 | 파일 | 역할 |
 |---|---|
-| `app.py` | 로컬 HTTP 서버. 화면 요청을 ytmusicapi 호출로 바꾸고, 붙여넣은 cURL에서 인증 헤더를 뽑아 저장합니다. |
-| `index.html` | 화면 전체. 별도 빌드 없이 서버가 그대로 보냅니다. |
+| `start.sh` | 의존성을 확인하고 서버를 켭니다. |
+| `src/server/app.py` | 로컬 HTTP 서버. 화면 요청을 ytmusicapi 호출로 바꾸고, 붙여넣은 cURL에서 인증 헤더를 뽑아 저장합니다. |
+| `src/web/` | 화면. `index.html`, `style.css`, `app.js`를 별도 빌드 없이 서버가 그대로 보냅니다. |
 
 ## 라이선스
 
