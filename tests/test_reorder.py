@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "server"))
-from app import reorder_moves
+from playlists import reorder_moves
 
 
 def apply(items, moves):

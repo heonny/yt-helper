@@ -69,10 +69,10 @@ Windows에서는 탐색기에서 `start.bat`을 더블클릭하세요. cmd 창�
 ## 주의할 점
 
 - **`~/.config/yt-helper/browser.json`을 공유하거나 올리지 마세요.** 이 파일만 있으면 누구나 이 계정으로 YouTube Music을 쓸 수 있습니다. 실수로 올렸다면 파일을 지우는 것으로는 부족하고, YouTube에서 로그아웃해 쿠키를 무효로 만들어야 합니다.
-- yt-helper는 공식 API가 아닌 [ytmusicapi](https://github.com/sigma67/ytmusicapi)를 씁니다. YouTube가 응답 형식을 바꾸면 기능이 깨질 수 있습니다. 실제로 재생목록 삭제 응답 형식이 바뀌어 `src/server/app.py`의 `delete`에서 따로 처리하고 있습니다.
+- yt-helper는 공식 API가 아닌 [ytmusicapi](https://github.com/sigma67/ytmusicapi)를 씁니다. YouTube가 응답 형식을 바꾸면 기능이 깨질 수 있습니다. 실제로 재생목록 삭제 응답 형식이 바뀌어 `src/server/playlists.py`의 `delete`에서 따로 처리하고 있습니다.
 - 서버는 `127.0.0.1`에서만 열리고, 다른 Host 헤더, JSON이 아닌 POST 요청, 접속 토큰이 없는 API 요청을 거부합니다. 그래서 같은 네트워크의 다른 기기, 다른 웹사이트, 토큰을 모르는 같은 컴퓨터의 다른 계정이나 프로그램은 이 서버를 쓸 수 없습니다.
 - 시작할 때 인증 파일과 폴더의 소유자와 권한을 점검합니다. 내 소유가 아니면 쓰지 않고, 권한이 600과 700보다 열려 있으면 경고를 출력하고 고칩니다.
-- 곡 정보는 한국어로 받습니다. 바꾸려면 `src/server/app.py`의 `main`에서 `language`와 `location` 값을 고치세요.
+- 곡 정보는 한국어로 받습니다. 바꾸려면 `src/server/auth.py`의 `login`에서 `language`와 `location` 값을 고치세요.
 
 ## 파일 구성
 
@@ -81,7 +81,9 @@ Windows에서는 탐색기에서 `start.bat`을 더블클릭하세요. cmd 창�
 | `start.sh` | 의존성을 확인하고 서버를 켭니다. |
 | `start.command` | macOS에서 더블클릭으로 `start.sh`를 터미널 창에서 실행합니다. |
 | `start.bat` | Windows에서 더블클릭으로 의존성을 확인하고 서버를 켭니다. |
-| `src/server/app.py` | 로컬 HTTP 서버. 화면 요청을 ytmusicapi 호출로 바꾸고, 붙여넣은 cURL에서 인증 헤더를 뽑아 저장합니다. |
+| `src/server/app.py` | 로컬 HTTP 서버이자 실행 진입점. Host, 토큰 검사 뒤 화면 요청을 아래 두 모듈로 넘깁니다. |
+| `src/server/auth.py` | 붙여넣은 cURL에서 인증 헤더를 뽑아 저장하고, 로그인 상태를 들고 있습니다. |
+| `src/server/playlists.py` | 재생목록과 곡을 읽고 바꿉니다. 추가, 삭제, 셔플이 여기 있습니다. |
 | `src/web/` | 화면. `index.html`, `style.css`, `app.js`를 별도 빌드 없이 서버가 그대로 보냅니다. |
 
 ## 라이선스
