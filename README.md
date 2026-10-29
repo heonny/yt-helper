@@ -28,6 +28,8 @@ cd yt-helper
 python3 -m pip install --user -r requirements.txt
 ```
 
+아래 실행 스크립트들은 `ytmusicapi`가 없으면 먼저 설치하므로, 마지막 줄은 건너뛰어도 됩니다. Windows에서는 Python을 설치할 때 "Add python.exe to PATH"를 체크하세요.
+
 ## 실행과 인증
 
 ```bash
@@ -36,7 +38,9 @@ python3 -m pip install --user -r requirements.txt
 
 macOS에서는 Finder에서 `start.command`를 더블클릭해도 됩니다. 터미널 창이 열리고 그 안에서 서버가 돌아갑니다. `start.sh`는 더블클릭하면 텍스트 편집기로 열립니다.
 
-브라우저가 `http://127.0.0.1:8765/#token=...` 주소로 열립니다. 이 토큰은 실행할 때마다 새로 만들어지고, 화면이 API를 부를 때 함께 보내야 서버가 요청을 받습니다. 브라우저가 열리지 않거나 탭을 닫았다면 터미널에 출력된 주소를 그대로 여세요. 서버를 다시 시작한 뒤 예전 탭에 "접속 토큰이 맞지 않습니다"가 뜨면, 새로 열린 탭을 쓰거나 터미널의 새 주소를 여세요. 서버를 끄려면 터미널에서 `Ctrl+C`를 누르거나 그 터미널 창을 닫으세요. `start.sh`는 `ytmusicapi`가 없으면 먼저 설치하고, macOS 기본 Python이 띄우는 `NotOpenSSLWarning`을 숨깁니다. Windows에서는 `python src\server\app.py`로 실행하세요.
+Windows에서는 탐색기에서 `start.bat`을 더블클릭하세요. cmd 창이 열리고, 설치나 실행이 실패하면 오류를 읽을 수 있게 창이 남습니다. `Ctrl+C`로 끄면 cmd가 일괄 작업을 끝낼지 (Y/N) 묻는데, 어느 쪽을 골라도 서버는 이미 꺼진 상태입니다. 스크립트 없이 `python src\server\app.py`로 직접 실행해도 됩니다.
+
+브라우저가 `http://127.0.0.1:8765/#token=...` 주소로 열립니다. 이 토큰은 실행할 때마다 새로 만들어지고, 화면이 API를 부를 때 함께 보내야 서버가 요청을 받습니다. 브라우저가 열리지 않거나 탭을 닫았다면 터미널에 출력된 주소를 그대로 여세요. 서버를 다시 시작한 뒤 예전 탭에 "접속 토큰이 맞지 않습니다"가 뜨면, 새로 열린 탭을 쓰거나 터미널의 새 주소를 여세요. 서버를 끄려면 터미널에서 `Ctrl+C`를 누르거나 그 터미널 창을 닫으세요. `start.sh`는 `ytmusicapi`가 없으면 먼저 설치하고, macOS 기본 Python이 띄우는 `NotOpenSSLWarning`을 숨깁니다.
 
 처음 실행하면 "YouTube Music 연결" 창이 뜹니다. yt-helper는 브라우저의 로그인 쿠키로 YouTube Music에 요청을 보내므로, 그 쿠키를 한 번 붙여넣어야 합니다.
 
@@ -76,6 +80,7 @@ macOS에서는 Finder에서 `start.command`를 더블클릭해도 됩니다. 터
 |---|---|
 | `start.sh` | 의존성을 확인하고 서버를 켭니다. |
 | `start.command` | macOS에서 더블클릭으로 `start.sh`를 터미널 창에서 실행합니다. |
+| `start.bat` | Windows에서 더블클릭으로 의존성을 확인하고 서버를 켭니다. |
 | `src/server/app.py` | 로컬 HTTP 서버. 화면 요청을 ytmusicapi 호출로 바꾸고, 붙여넣은 cURL에서 인증 헤더를 뽑아 저장합니다. |
 | `src/web/` | 화면. `index.html`, `style.css`, `app.js`를 별도 빌드 없이 서버가 그대로 보냅니다. |
 
