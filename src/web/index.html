@@ -36,7 +36,7 @@
     <textarea id="authText" rows="6" spellcheck="false" autocomplete="off" placeholder="curl 'https://music.youtube.com/youtubei/v1/browse?...'"></textarea>
     <ul class="note">
       <li>붙여넣은 내용은 이 컴퓨터에서 실행 중인 yt-helper로만 전달되고, yt-helper는 이 쿠키로 YouTube Music에만 요청합니다. 다른 서버로는 보내지 않습니다.</li>
-      <li>쿠키는 <code>~/.config/yt-helper/browser.json</code>에 저장되므로 브라우저나 서버를 꺼도 연결이 유지됩니다. macOS와 Linux에서는 권한 600으로 내 계정만 읽을 수 있습니다.</li>
+      <li>쿠키는 <code>~/.config/yt-helper/browser.json</code>에 저장되므로 브라우저나 서버를 꺼도 연결이 유지됩니다. Windows에서는 <code>%USERPROFILE%\.config\yt-helper\browser.json</code>입니다. macOS와 Linux에서는 권한 600으로 내 계정만 읽을 수 있고, Windows에서는 사용자 폴더의 기본 접근 권한을 따릅니다.</li>
       <li><b>인증 해제</b>는 이 파일을 지웁니다. 쿠키 자체를 무효로 하려면 YouTube에서 로그아웃하세요.</li>
     </ul>
     <div class="actions">
