@@ -9,6 +9,7 @@ import hmac
 import html
 import json
 import os
+import random
 import re
 import secrets
 import stat
@@ -276,6 +277,29 @@ def delete(body):
     return {}
 
 
+def reorder_moves(current, order):
+    """setVideoId 목록 current를 order 순서로 바꾸는 (옮길 곡, 그 뒤에 올 곡) 이동 목록."""
+    # 뒤에서부터 각 곡을 order에서 바로 다음 곡 앞으로 옮기면 전체가 order 순서로 맨 앞에 모인다.
+    # 마지막 곡은 지금 맨 앞 곡 앞으로 옮기고, 이미 맨 앞이면 건너뛴다.
+    successors = order[1:] + current[:1]
+    return [(s, n) for s, n in reversed(list(zip(order, successors))) if s != n]
+
+
+def shuffle(body):
+    """곡 순서를 무작위로 섞어 재생목록 자체에 저장한다."""
+    playlist_id = body["playlistId"]
+    playlist = fetch_playlist(playlist_id)
+    if not playlist.get("owned"):
+        raise RuntimeError("내 재생목록만 섞을 수 있습니다.")
+    current = [t["setVideoId"] for t in playlist["tracks"] if t.get("setVideoId")]
+    moves = [{"action": "ACTION_MOVE_VIDEO_BEFORE", "setVideoId": s, "movedSetVideoIdSuccessor": n}
+             for s, n in reorder_moves(current, random.sample(current, len(current)))]
+    # edit_playlist는 요청 하나에 이동을 하나만 담아 직접 보낸다. 한 요청에 몇 개까지 받는지 몰라 100개씩 나눈다.
+    for i in range(0, len(moves), 100):
+        ensure_ok(yt._send_request("browse/edit_playlist", {"playlistId": playlist_id, "actions": moves[i:i + 100]}), "셔플")
+    return {"shuffled": len(current)}
+
+
 class Handler(BaseHTTPRequestHandler):
     def send_json(self, status, data):
         payload = json.dumps(data, ensure_ascii=False).encode()
@@ -330,7 +354,7 @@ class Handler(BaseHTTPRequestHandler):
         return body
 
     def do_POST(self):
-        actions = {"/api/auth": save_auth, "/api/logout": logout, "/api/tracks/more": more_tracks, "/api/create": create, "/api/add": add, "/api/remove": remove, "/api/delete": delete}
+        actions = {"/api/auth": save_auth, "/api/logout": logout, "/api/tracks/more": more_tracks, "/api/create": create, "/api/add": add, "/api/remove": remove, "/api/delete": delete, "/api/shuffle": shuffle}
         action = actions.get(self.path)
         if not action:
             return self.send_error(404)

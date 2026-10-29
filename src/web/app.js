@@ -152,6 +152,7 @@ function makePane(root) {
   q(".send").onclick = () => transfer(p, p.other);
   q(".rm").onclick = () => removeSelected(p);
   q(".del").onclick = () => deletePlaylist(p);
+  q(".shuffle").onclick = () => shufflePlaylist(p);
 
   list.ondragover = (e) => {
     if (!dragFrom || dragFrom === p) return;
@@ -303,6 +304,7 @@ function paint(p) {
   p.q(".rm").disabled = !p.owned || !p.selected.size;
   // LM(좋아요), 리캡(LR…), 에피소드 목록 같은 시스템 목록은 지울 수 없게 PL로 시작하는 내 재생목록만 허용한다.
   p.q(".del").disabled = !p.owned || !p.id.startsWith("PL");
+  p.q(".shuffle").disabled = !p.owned || !!p.loading || p.tracks.length < 2;
 }
 
 function toggle(p, pos, range) {
@@ -450,6 +452,20 @@ function deletePlaylist(p) {
       await Promise.all(panes.filter((pane) => pane.id === id).map((pane) => load(pane, "")));
       return `재생목록 "${name}" 삭제 완료`;
     },
+  });
+}
+
+function shufflePlaylist(p) {
+  if (!p.owned) return setStatus(`"${titleOf(p.id)}"은 내 재생목록이 아니라 섞을 수 없습니다.`);
+  const [id, name] = [p.id, titleOf(p.id)];
+  if (!confirm(`재생목록 "${name}" (${(p.shown || p.tracks).length}곡)의 순서를 무작위로 섞을까요?\n지금 순서는 되돌릴 수 없습니다.`)) return;
+  // 화면 정렬이 켜져 있으면 섞인 순서가 보이지 않아 원래 순서 보기로 돌린다.
+  p.sort = { key: "", dir: 1 };
+  render(p);
+  enqueue({
+    label: `"${name}" 셔플`,
+    dirty: [id],
+    work: async () => `"${name}" ${(await api("/api/shuffle", { playlistId: id })).shuffled}곡 셔플 완료`,
   });
 }
 
