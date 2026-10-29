@@ -2,7 +2,7 @@
 """YouTube Music 재생목록 두 개를 나란히 띄워 곡을 드래그로 복사/이동하는 로컬 웹 GUI.
 
 설치: python3 -m pip install --user -r requirements.txt
-실행: python3 app.py  (브라우저가 열리고, 처음이면 인증 화면에서 Copy as cURL 내용을 붙여넣는다)
+실행: ./start.sh 또는 python3 src/server/app.py  (브라우저가 열리고, 처음이면 인증 화면에서 Copy as cURL 내용을 붙여넣는다)
 """
 import codecs
 import hmac
@@ -27,14 +27,20 @@ from ytmusicapi.continuations import CONTINUATION_ITEMS, get_continuation_token
 from ytmusicapi.navigation import CONTENT, SECTION, TWO_COLUMN_RENDERER, nav
 from ytmusicapi.parsers.playlists import parse_playlist_items
 
-HERE = Path(__file__).parent
+ROOT = Path(__file__).resolve().parents[2]
+WEB_DIR = ROOT / "src" / "web"
+WEB_FILES = {
+    "/": ("index.html", "text/html; charset=utf-8"),
+    "/style.css": ("style.css", "text/css; charset=utf-8"),
+    "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+}
 PORT = 8765
 ALLOWED_HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 # 실행할 때마다 새로 만든다. 브라우저에는 URL 조각(#)으로만 넘겨, 같은 컴퓨터의 다른 계정이나 프로그램이 API를 부르지 못하게 한다.
 TOKEN = secrets.token_urlsafe(32)
 # 프로젝트 폴더 밖에 두어 git이나 폴더 공유로 쿠키가 새지 않게 한다.
 AUTH_PATH = Path.home() / ".config" / "yt-helper" / "browser.json"
-LEGACY_AUTH_PATH = HERE / "browser.json"
+LEGACY_AUTH_PATH = ROOT / "browser.json"
 OPEN_PATH = AUTH_PATH.with_name("open.html")
 MAX_BODY = 5_000_000
 PLAYLIST_SHELF = [*TWO_COLUMN_RENDERER, "secondaryContents", *SECTION, *CONTENT, "musicPlaylistShelfRenderer", "contents"]
@@ -296,10 +302,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         url = urlparse(self.path)
-        if url.path == "/":
-            page = (HERE / "index.html").read_bytes()
+        if url.path in WEB_FILES:
+            name, content_type = WEB_FILES[url.path]
+            page = (WEB_DIR / name).read_bytes()
             self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(page)))
             self.end_headers()
             self.wfile.write(page)
