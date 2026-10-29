@@ -13,10 +13,16 @@ export const hideKey = (playlistId, t) => `${playlistId}|${t.setVideoId}`;
 export const titleOf = (id) => (playlists.find((p) => p.id === id) || {}).title || id;
 const collator = new Intl.Collator("ko", { numeric: true, sensitivity: "base" });
 
+// 공백과 특수문자를 지우고 글자와 숫자만 남겨, 표기만 다르거나 다른 앨범에 실린 같은 곡을 한 묶음으로 본다.
+function songKey(t) {
+  const [title, artists] = [t.title, t.artists].map((s) => (s || "").normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}\p{M}]/gu, ""));
+  return title && `${title}|${artists}`;
+}
+
 function makePane(root) {
   root.append($("paneTpl").content.cloneNode(true));
   const q = (s) => root.querySelector(s);
-  const p = { id: "", owned: false, tracks: [], selected: new Set(), visible: [], rows: [], last: null, sort: { key: "", dir: 1 }, loadSeq: 0, loading: null, q };
+  const p = { id: "", owned: false, tracks: [], selected: new Set(), visible: [], rows: [], repeats: new Set(), dupGroup: new Map(), last: null, sort: { key: "", dir: 1 }, loadSeq: 0, loading: null, q };
   const list = q(".list");
   p.root = root;
   root.addEventListener("mousedown", () => (activePane = p));
@@ -31,8 +37,11 @@ function makePane(root) {
   q(".pl").onchange = () => load(p, q(".pl").value).catch((e) => setStatus("오류: " + e.message));
   q(".search").oninput = () => { p.last = null; render(p); };
   q(".only").onchange = () => { p.last = null; render(p); };
+  q(".dupsonly").onchange = () => { p.last = null; render(p); };
   q(".all").onclick = () => { p.visible.forEach((t) => p.selected.add(t.i)); paint(p); };
   q(".clear").onclick = () => { p.selected.clear(); paint(p); };
+  // 원본은 빼고 중복 항목만 골라, "선택 곡 삭제"를 누르면 곡마다 하나씩만 남게 한다.
+  q(".dups").onclick = () => { p.selected = new Set(p.visible.filter((t) => p.repeats.has(t.i)).map((t) => t.i)); p.last = null; paint(p); };
 
   list.ondragover = (e) => {
     if (!dragFrom || dragFrom === p) return;
@@ -47,6 +56,13 @@ function makePane(root) {
 export const panes = [...document.querySelectorAll(".pane")].map(makePane);
 panes[0].other = panes[1];
 panes[1].other = panes[0];
+
+// 선택이 어떤 중복 묶음을 통째로 덮으면 그 곡은 재생목록에서 아예 사라진다.
+export function wholeGroupsSelected(p) {
+  const kept = new Set([...p.dupGroup].filter(([i]) => !p.selected.has(i)).map(([, n]) => n));
+  const touched = new Set([...p.dupGroup].filter(([i]) => p.selected.has(i)).map(([, n]) => n));
+  return [...touched].filter((n) => !kept.has(n)).length;
+}
 
 export function forgetPlaylists() {
   playlists = [];
@@ -141,11 +157,28 @@ export function render(p) {
   if (dragFrom) { p.stale = true; return; }
   const q = p.q(".search").value.trim().toLowerCase();
   const only = p.q(".only").checked;
+  const dupsOnly = p.q(".dupsonly").checked;
   const otherIds = new Set(p.other.tracks.map((t) => t.videoId));
   p.shown = p.tracks.filter((t) => !hidden.has(hideKey(p.id, t)));
+  const groups = new Map();
+  for (const t of p.shown) {
+    const key = songKey(t);
+    if (!key) continue;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(t);
+  }
+  // 묶음마다 재생목록에서 먼저 나온 곡을 남길 원본으로 두고 나머지만 중복으로 센다. 묶음 번호도 먼저 나온 순서다.
+  const dupGroup = (p.dupGroup = new Map());
+  p.repeats = new Set();
+  for (const group of [...groups.values()].filter((g) => g.length > 1)) {
+    const n = dupGroup.size;
+    group.forEach((t, k) => { dupGroup.set(t.i, n); if (k) p.repeats.add(t.i); });
+  }
   p.visible = p.shown.filter((t) =>
     (!only || p.selected.has(t.i)) &&
+    (!dupsOnly || dupGroup.has(t.i)) &&
     (!q || `${t.title} ${t.artists} ${t.album}`.toLowerCase().includes(q)));
+  if (dupsOnly) p.visible.sort((a, b) => dupGroup.get(a.i) - dupGroup.get(b.i));
   const { key, dir } = p.sort;
   if (key) p.visible.sort((a, b) => collator.compare(a[key], b[key]) * dir);
   p.root.querySelectorAll(".sort").forEach((button) => {
@@ -157,13 +190,16 @@ export function render(p) {
   p.rows = p.visible.map((t, pos) => {
     const dup = otherIds.has(t.videoId);
     const name = el("div", { className: "name", textContent: t.title });
+    if (p.repeats.has(t.i)) name.append(el("span", { className: "tag", textContent: "중복" }));
     if (dup) name.append(el("span", { className: "tag", textContent: "반대쪽에 있음" }));
-    const row = el("div", { className: "row" + (dup ? " dup" : ""), draggable: true });
+    const groupStart = dupsOnly && pos > 0 && dupGroup.get(p.visible[pos - 1].i) !== dupGroup.get(t.i);
+    const row = el("div", { className: "row" + (dup ? " dup" : "") + (groupStart ? " gstart" : ""), draggable: true });
     row.append(
       el("input", { type: "checkbox", tabIndex: -1 }),
       el("img", { src: t.thumb, loading: "lazy", alt: "" }),
       name,
-      el("div", { className: "artist", textContent: t.artists }));
+      // 중복만 볼 때는 어느 쪽을 남길지 고를 수 있게 앨범도 보여 준다.
+      el("div", { className: "artist", textContent: dupsOnly && t.album ? `${t.artists} · ${t.album}` : t.artists }));
     row.onclick = (e) => toggle(p, pos, e.shiftKey);
     row.ondragstart = (e) => startDrag(p, t, e);
     row.ondragend = endDrag;
@@ -183,7 +219,8 @@ function paint(p) {
     row.firstChild.checked = on;
   });
   const count = p.loading ? `${p.loading.done}/${p.loading.total || "?"}곡 불러오는 중` : `${(p.shown || p.tracks).length}곡`;
-  p.q(".info").textContent = p.id ? `${count} · 선택 ${p.selected.size}` + (p.owned ? "" : " · 읽기 전용") : "";
+  p.q(".info").textContent = p.id ? `${count} · 선택 ${p.selected.size}` + (p.repeats.size ? ` · 중복 ${p.repeats.size}` : "") + (p.owned ? "" : " · 읽기 전용") : "";
+  p.q(".dups").disabled = !p.repeats.size;
   p.q(".send").disabled = !p.selected.size;
   p.q(".rm").disabled = !p.owned || !p.selected.size;
   // LM(좋아요), 리캡(LR…), 에피소드 목록 같은 시스템 목록은 지울 수 없게 PL로 시작하는 내 재생목록만 허용한다.

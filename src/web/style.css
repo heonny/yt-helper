@@ -59,6 +59,7 @@ label { display: inline-flex; gap: 4px; align-items: center; color: var(--muted)
 .row .artist { color: var(--muted); }
 .row .tag { margin-left: 6px; padding: 0 5px; border-radius: 4px; font-size: 11px; background: var(--line); color: var(--muted); }
 .row.dup .name { opacity: .55; }
+.row.gstart { border-top: 2px solid var(--muted); }
 .empty { padding: 40px 16px; text-align: center; color: var(--muted); }
 #auth { max-width: 640px; width: calc(100% - 32px); border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text); padding: 20px; }
 #auth::backdrop { background: rgb(0 0 0 / .45); }

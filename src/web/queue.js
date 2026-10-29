@@ -1,6 +1,6 @@
 import { $, setStatus } from "./dom.js";
 import { api, waitForAuth } from "./api.js";
-import { deleted, hidden, hideKey, load, panes, playlists, refreshPlaylists, render, titleOf } from "./panes.js";
+import { deleted, hidden, hideKey, load, panes, playlists, refreshPlaylists, render, titleOf, wholeGroupsSelected } from "./panes.js";
 
 // 이 개수 이상을 이동/삭제할 때만 확인 창을 띄운다. 한 곡씩 빠르게 처리할 때는 묻지 않는다.
 const BULK_CONFIRM = 10;
@@ -107,7 +107,10 @@ export function removeSelected(p) {
   if (!p.owned) return setStatus(`"${titleOf(p.id)}"은 내 재생목록이 아니라 곡을 삭제할 수 없습니다.`);
   const tracks = pickedOf(p);
   const [id, name] = [p.id, titleOf(p.id)];
-  if (tracks.length >= BULK_CONFIRM && !confirm(`"${name}"에서 선택한 ${tracks.length}곡을 삭제할까요?`)) return;
+  // 같은 곡의 복사본을 모두 지우는 경우는 곡 수가 적어도 묻는다.
+  const wiped = wholeGroupsSelected(p);
+  const warning = wiped ? `\n중복 곡 ${wiped}개는 남는 복사본 없이 모두 지워집니다.` : "";
+  if ((tracks.length >= BULK_CONFIRM || wiped) && !confirm(`"${name}"에서 선택한 ${tracks.length}곡을 삭제할까요?${warning}`)) return;
   p.selected.clear();
   enqueue({
     label: `"${name}"에서 ${tracks.length}곡 삭제`,
