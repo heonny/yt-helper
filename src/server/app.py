@@ -12,6 +12,7 @@ import os
 import random
 import re
 import secrets
+import signal
 import stat
 import time
 import webbrowser
@@ -383,8 +384,12 @@ def main():
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     url = f"http://127.0.0.1:{PORT}/#token={TOKEN}"
     print(f"실행 중입니다. 브라우저가 열리지 않으면 이 주소를 여세요. 종료는 Ctrl+C.\n{url}")
-    open_browser(url)
+    # 터미널 창을 닫거나(SIGHUP) kill로 꺼도 Ctrl+C처럼 아래 finally가 돌아 토큰이 든 파일을 지우게 한다.
+    for name in ("SIGTERM", "SIGHUP"):
+        if hasattr(signal, name):
+            signal.signal(getattr(signal, name), signal.default_int_handler)
     try:
+        open_browser(url)
         server.serve_forever()
     except KeyboardInterrupt:
         pass
