@@ -86,7 +86,7 @@ class Handler(BaseHTTPRequestHandler):
         return body
 
     def do_POST(self):
-        actions = {"/api/auth": auth.save_auth, "/api/logout": auth.logout, "/api/tracks/more": playlists.more_tracks, "/api/create": playlists.create, "/api/add": playlists.add, "/api/remove": playlists.remove, "/api/delete": playlists.delete, "/api/shuffle": playlists.shuffle}
+        actions = {"/api/auth": auth.save_auth, "/api/logout": auth.logout, "/api/tracks/more": playlists.more_tracks, "/api/create": playlists.create, "/api/add": playlists.add, "/api/remove": playlists.remove, "/api/delete": playlists.delete, "/api/shuffle": playlists.shuffle, "/api/sort": playlists.set_sort}
         action = actions.get(self.path)
         if not action:
             return self.send_error(404)

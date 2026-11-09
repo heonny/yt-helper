@@ -24,7 +24,7 @@ function songKey(t) {
 function makePane(root) {
   root.append($("paneTpl").content.cloneNode(true));
   const q = (s) => root.querySelector(s);
-  const p = { id: "", owned: false, tracks: [], selected: new Set(), visible: [], rows: [], repeats: new Set(), dupGroup: new Map(), last: null, sort: { key: "", dir: 1 }, loadSeq: 0, loading: null, q };
+  const p = { id: "", owned: false, sorts: [], tracks: [], selected: new Set(), visible: [], rows: [], repeats: new Set(), dupGroup: new Map(), last: null, sort: { key: "", dir: 1 }, loadSeq: 0, loading: null, q };
   const list = q(".list");
   p.root = root;
   root.addEventListener("mousedown", () => (activePane = p));
@@ -118,7 +118,7 @@ export async function load(p, id) {
   const seq = ++p.loadSeq;
   p.id = id;
   p.last = null;
-  if (!sameList) { p.selected.clear(); p.tracks = []; p.owned = false; render(p); p.q(".list").scrollTop = 0; }
+  if (!sameList) { p.selected.clear(); p.tracks = []; p.owned = false; setSorts(p, []); render(p); p.q(".list").scrollTop = 0; }
   if (!id) { setLoading(p, null); return render(p.other); }
   setLoading(p, 0, null);
   try {
@@ -132,6 +132,7 @@ export async function load(p, id) {
       p.selected = new Set(tracks.filter((t) => keep.has(t.setVideoId)).map((t) => t.i));
       p.tracks = tracks;
       p.owned = first.owned;
+      setSorts(p, first.sorts);
       render(p);
     };
     // 처음 여는 목록은 100곡씩 받는 대로 보여 주고, 보던 목록을 다시 받을 때는 다 받은 뒤 한 번에 바꿔 화면이 비지 않게 한다.
@@ -152,6 +153,12 @@ export async function load(p, id) {
   } finally {
     if (p.loadSeq === seq) setLoading(p, null);
   }
+}
+
+// 옵션을 render마다 다시 만들면 펼쳐 둔 목록이 닫히므로 불러올 때만 채운다.
+function setSorts(p, sorts) {
+  p.sorts = sorts;
+  p.q(".order").replaceChildren(...sorts.map((s) => new Option(s.title, s.title, false, s.selected)));
 }
 
 export function render(p) {
@@ -228,6 +235,7 @@ function paint(p) {
   // LM(좋아요), 리캡(LR…), 에피소드 목록 같은 시스템 목록은 지울 수 없게 PL로 시작하는 내 재생목록만 허용한다.
   p.q(".del").disabled = !p.owned || !p.id.startsWith("PL");
   p.q(".shuffle").disabled = !p.owned || !!p.loading || p.tracks.length < 2;
+  p.q(".order").disabled = !p.owned || !!p.loading || !p.sorts.length;
 }
 
 function toggle(p, pos, range) {

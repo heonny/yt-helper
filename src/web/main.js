@@ -2,7 +2,7 @@ import { $, setStatus } from "./dom.js";
 import { api } from "./api.js";
 import { authState, initAuthDialog, openAuth, renderAuth } from "./auth-dialog.js";
 import { activePane, dragFrom, dragOnly, forgetPlaylists, load, panes, playlists, refreshPlaylists } from "./panes.js";
-import { createPlaylist, deletePlaylist, queue, removeSelected, shufflePlaylist, transfer } from "./queue.js";
+import { createPlaylist, deletePlaylist, queue, removeSelected, shufflePlaylist, sortPlaylist, transfer } from "./queue.js";
 
 // panes.js와 queue.js가 서로 import하지 않도록 재생목록을 바꾸는 버튼과 드롭은 여기서 잇는다.
 for (const p of panes) {
@@ -11,6 +11,7 @@ for (const p of panes) {
   p.q(".rm").onclick = () => removeSelected(p);
   p.q(".del").onclick = () => deletePlaylist(p);
   p.q(".shuffle").onclick = () => shufflePlaylist(p);
+  p.q(".order").onchange = () => sortPlaylist(p, p.q(".order").value);
   const list = p.q(".list");
   list.ondrop = (e) => { e.preventDefault(); list.classList.remove("drop"); transfer(dragFrom, p, dragOnly); };
 }

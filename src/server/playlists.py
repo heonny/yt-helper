@@ -12,7 +12,10 @@ from ytmusicapi.parsers.playlists import parse_playlist_items
 
 import auth
 
-PLAYLIST_SHELF = [*TWO_COLUMN_RENDERER, "secondaryContents", *SECTION, *CONTENT, "musicPlaylistShelfRenderer", "contents"]
+SHELF = [*TWO_COLUMN_RENDERER, "secondaryContents", *SECTION, *CONTENT, "musicPlaylistShelfRenderer"]
+PLAYLIST_SHELF = [*SHELF, "contents"]
+SORT_MENU_PARENT = [*SHELF, "header", "musicSideAlignedItemRenderer", "startItems"]
+MANUAL_ORDER = {"action": "ACTION_SET_PLAYLIST_VIDEO_ORDER", "playlistVideoOrder": 0}
 
 
 def list_playlists():
@@ -64,10 +67,44 @@ def list_tracks(playlist_id):
     # owned와 trackCount는 get_playlist의 머리글 해석을 그대로 쓰고, 곡과 토큰은 같은 browse 요청을 직접 보내 얻는다.
     with ThreadPoolExecutor(max_workers=2) as pool:
         meta = pool.submit(fetch_playlist, playlist_id, 0)
-        first = pool.submit(auth.yt._send_request, "browse", {"browseId": "VL" + playlist_id})
+        first = pool.submit(browse_first_page, playlist_id)
         playlist, response = meta.result(), first.result()
+    sorts = [{"title": item["title"], "selected": bool(item.get("selected"))} for item in sort_menu(response)]
     # 남의 재생목록을 보관함에 저장한 경우 owned가 False이고, 수정/삭제는 403으로 거부된다.
-    return {"owned": bool(playlist.get("owned")), "total": playlist.get("trackCount"), **track_page(nav(response, PLAYLIST_SHELF, True))}
+    return {"owned": bool(playlist.get("owned")), "total": playlist.get("trackCount"), "sorts": sorts, **track_page(nav(response, PLAYLIST_SHELF, True))}
+
+
+def browse_first_page(playlist_id):
+    return auth.yt._send_request("browse", {"browseId": "VL" + playlist_id})
+
+
+def sort_menu(response):
+    """YouTube Music 웹이 내 재생목록 위에 띄우는 정렬 메뉴 항목. 남의 재생목록에는 없다."""
+    parents = nav(response, SORT_MENU_PARENT, True) or []
+    items = next((item["sortFilterSubMenuRenderer"].get("subMenuItems", []) for item in parents if "sortFilterSubMenuRenderer" in item), [])
+    # 메뉴는 곁다리 기능이라, 모양이 바뀐 항목은 버려 곡 목록과 셔플은 계속 동작하게 한다.
+    return [i for i in items if i.get("title") and "actions" in i.get("serviceEndpoint", {}).get("playlistEditEndpoint", {})]
+
+
+def apply_sort(playlist_id, item):
+    # 정렬 방식 번호를 직접 만들지 않고, 메뉴 항목이 들고 있는 요청을 YouTube Music 웹처럼 그대로 보낸다.
+    endpoint = item["serviceEndpoint"]["playlistEditEndpoint"]
+    if endpoint.get("playlistId") != playlist_id:
+        raise RuntimeError(f"정렬 메뉴가 다른 재생목록을 가리킵니다: {endpoint.get('playlistId')}")
+    request = {"playlistId": playlist_id, "actions": endpoint["actions"]}
+    if "params" in endpoint:
+        request["params"] = endpoint["params"]
+    ensure_ok(auth.yt._send_request("browse/edit_playlist", request), f"{item['title']} 정렬")
+
+
+def set_sort(body):
+    """재생목록의 정렬 방식을 YouTube Music 정렬 메뉴의 항목 이름으로 바꾼다."""
+    playlist_id = body["playlistId"]
+    item = next((i for i in sort_menu(browse_first_page(playlist_id)) if i["title"] == body["title"]), None)
+    if item is None:
+        raise RuntimeError(f"정렬 메뉴에 \"{body['title']}\" 항목이 없습니다. 내 재생목록인지 확인하세요.")
+    apply_sort(playlist_id, item)
+    return {}
 
 
 def more_tracks(body):
@@ -133,6 +170,12 @@ def shuffle(body):
     playlist = fetch_playlist(playlist_id)
     if not playlist.get("owned"):
         raise RuntimeError("내 재생목록만 섞을 수 있습니다.")
+    # 수동 정렬이 아니면 YouTube가 정렬 방식대로 곡을 보여 주므로 먼저 수동 정렬로 되돌린다.
+    # 메뉴 이름은 언어마다 달라, 2026-11 응답에서 "수동 정렬" 항목이 보낸 playlistVideoOrder 0으로 찾는다. 못 찾으면 예전처럼 바로 섞는다.
+    manual = next((i for i in sort_menu(browse_first_page(playlist_id)) if MANUAL_ORDER in i["serviceEndpoint"]["playlistEditEndpoint"]["actions"]), None)
+    if manual and not manual.get("selected"):
+        apply_sort(playlist_id, manual)
+        playlist = fetch_playlist(playlist_id)
     current = [t["setVideoId"] for t in playlist["tracks"] if t.get("setVideoId")]
     moves = [{"action": "ACTION_MOVE_VIDEO_BEFORE", "setVideoId": s, "movedSetVideoIdSuccessor": n}
              for s, n in reorder_moves(current, random.sample(current, len(current)))]

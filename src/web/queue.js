@@ -152,6 +152,21 @@ export function shufflePlaylist(p) {
   });
 }
 
+export function sortPlaylist(p, sortTitle) {
+  const [id, name] = [p.id, titleOf(p.id)];
+  // 화면 정렬이 켜져 있으면 YouTube가 정렬한 순서가 보이지 않아 원래 순서 보기로 돌린다.
+  p.sort = { key: "", dir: 1 };
+  render(p);
+  enqueue({
+    label: `"${name}" ${sortTitle} 정렬`,
+    dirty: [id],
+    work: async () => {
+      await api("/api/sort", { playlistId: id, title: sortTitle });
+      return `"${name}" ${sortTitle} 정렬 완료`;
+    },
+  });
+}
+
 export function createPlaylist(p) {
   const title = (prompt("새 재생목록 이름") || "").trim();
   if (!title) return;
